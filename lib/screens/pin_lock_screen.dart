@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
+import '../services/auth_service.dart';
 
 class PinLockScreen extends StatefulWidget {
   final AppState appState;
@@ -46,7 +47,15 @@ class _PinLockScreenState extends State<PinLockScreen> {
     final success = widget.appState.unlockWithPin(_enteredPin);
     if (!success) {
       setState(() {
-        _errorMessage = 'Incorrect PIN. Please try again.';
+        final remaining = AuthService.remainingAttempts;
+        if (AuthService.isLockedOut) {
+          final duration = AuthService.lockoutRemainingDuration;
+          final minutes = duration.inMinutes;
+          final seconds = duration.inSeconds % 60;
+          _errorMessage = 'Too many attempts. Try again in ${minutes}m ${seconds}s.';
+        } else {
+          _errorMessage = 'Incorrect PIN. $remaining attempts remaining.';
+        }
         _enteredPin = '';
       });
     }

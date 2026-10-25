@@ -3,9 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pocketledger/state/app_state.dart';
 import 'package:pocketledger/services/storage_service.dart';
 import 'package:pocketledger/models/transaction_item.dart';
-import 'package:pocketledger/models/category_item.dart';
 import 'package:pocketledger/models/budget_item.dart';
-import 'package:pocketledger/models/reminder_item.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

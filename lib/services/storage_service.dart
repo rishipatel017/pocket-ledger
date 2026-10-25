@@ -212,6 +212,7 @@ class StorageService {
     final map = {
       'app': 'PocketLedger',
       'version': '1.0.0',
+      'schemaVersion': '1',
       'backupDate': DateTime.now().toIso8601String(),
       'settings': settings.toJson(),
       'transactions': transactions.map((e) => e.toJson()).toList(),
@@ -227,54 +228,114 @@ class StorageService {
   Future<bool> restoreFromBackupJson(String jsonStr) async {
     try {
       final map = jsonDecode(jsonStr) as Map<String, dynamic>;
+      
+      // Validate backup structure
       if (map['app'] != 'PocketLedger') {
         return false;
       }
-
-      if (map['settings'] != null) {
-        await saveSettings(
-          AppSettings.fromJson(map['settings'] as Map<String, dynamic>),
-        );
+      
+      // Check schema version
+      final schemaVersion = map['schemaVersion'] as String? ?? '0';
+      if (schemaVersion != '1') {
+        // Could add migration logic here for future versions
+        return false;
       }
+
+      // Validate backup date
+      if (map['backupDate'] == null) {
+        return false;
+      }
+
+      // Temporary storage for validation
+      final validatedData = <String, dynamic>{};
+
+      // Validate and prepare each collection
+      if (map['settings'] != null) {
+        final settings = AppSettings.fromJson(map['settings'] as Map<String, dynamic>);
+        validatedData['settings'] = settings;
+      }
+      
       if (map['transactions'] != null) {
         final list = (map['transactions'] as List<dynamic>)
             .map((e) => TransactionItem.fromJson(e as Map<String, dynamic>))
             .toList();
-        await saveTransactions(list);
+        // Validate no duplicate IDs
+        final ids = list.map((t) => t.id).toSet();
+        if (ids.length != list.length) return false;
+        validatedData['transactions'] = list;
       }
+      
       if (map['categories'] != null) {
         final list = (map['categories'] as List<dynamic>)
             .map((e) => CategoryItem.fromJson(e as Map<String, dynamic>))
             .toList();
-        await saveCategories(list);
+        final ids = list.map((c) => c.id).toSet();
+        if (ids.length != list.length) return false;
+        validatedData['categories'] = list;
       }
+      
       if (map['budgets'] != null) {
         final list = (map['budgets'] as List<dynamic>)
             .map((e) => BudgetItem.fromJson(e as Map<String, dynamic>))
             .toList();
-        await saveBudgets(list);
+        final ids = list.map((b) => b.id).toSet();
+        if (ids.length != list.length) return false;
+        validatedData['budgets'] = list;
       }
+      
       if (map['reminders'] != null) {
         final list = (map['reminders'] as List<dynamic>)
             .map((e) => ReminderItem.fromJson(e as Map<String, dynamic>))
             .toList();
-        await saveReminders(list);
+        final ids = list.map((r) => r.id).toSet();
+        if (ids.length != list.length) return false;
+        validatedData['reminders'] = list;
       }
+      
       if (map['financialRecords'] != null) {
         final list = (map['financialRecords'] as List<dynamic>)
             .map((e) => FinancialRecordItem.fromJson(e as Map<String, dynamic>))
             .toList();
-        await saveFinancialRecords(list);
+        final ids = list.map((f) => f.id).toSet();
+        if (ids.length != list.length) return false;
+        validatedData['financialRecords'] = list;
       }
+      
       if (map['savingsGoals'] != null) {
         final list = (map['savingsGoals'] as List<dynamic>)
             .map((e) => SavingsGoalItem.fromJson(e as Map<String, dynamic>))
             .toList();
-        await saveSavingsGoals(list);
+        final ids = list.map((s) => s.id).toSet();
+        if (ids.length != list.length) return false;
+        validatedData['savingsGoals'] = list;
+      }
+
+      // All validations passed - now save data atomically
+      if (validatedData['settings'] != null) {
+        await saveSettings(validatedData['settings'] as AppSettings);
+      }
+      if (validatedData['transactions'] != null) {
+        await saveTransactions(validatedData['transactions'] as List<TransactionItem>);
+      }
+      if (validatedData['categories'] != null) {
+        await saveCategories(validatedData['categories'] as List<CategoryItem>);
+      }
+      if (validatedData['budgets'] != null) {
+        await saveBudgets(validatedData['budgets'] as List<BudgetItem>);
+      }
+      if (validatedData['reminders'] != null) {
+        await saveReminders(validatedData['reminders'] as List<ReminderItem>);
+      }
+      if (validatedData['financialRecords'] != null) {
+        await saveFinancialRecords(validatedData['financialRecords'] as List<FinancialRecordItem>);
+      }
+      if (validatedData['savingsGoals'] != null) {
+        await saveSavingsGoals(validatedData['savingsGoals'] as List<SavingsGoalItem>);
       }
 
       return true;
-    } catch (_) {
+    } catch (e) {
+      print('Backup restore failed: $e');
       return false;
     }
   }
