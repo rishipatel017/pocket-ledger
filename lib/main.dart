@@ -24,14 +24,18 @@ void main() async {
 
   // Initialize storage and app state
   final storage = await StorageService.init();
-  final appState = AppState(storage);
-  await appState.init();
-
-  // Initialize notification service
   final notificationService = NotificationService();
   await notificationService.initialize();
   // Request permission
   await notificationService.requestPermission();
+  
+  final appState = AppState(storage, notificationService);
+  await appState.init();
+  
+  // Reschedule all reminders on app startup
+  if (notificationService.isPermissionGranted) {
+    await notificationService.scheduleReminders(appState.reminders);
+  }
 
   runApp(PocketLedgerApp(
     appState: appState,

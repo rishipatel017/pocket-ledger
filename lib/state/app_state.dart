@@ -11,11 +11,13 @@ import '../models/savings_goal_item.dart';
 import '../models/app_settings.dart';
 import '../services/storage_service.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 
 enum DateFilterPreset { allTime, thisMonth, lastMonth, thisWeek, today, custom }
 
 class AppState extends ChangeNotifier {
   final StorageService _storage;
+  final NotificationService? _notificationService;
   final _uuid = const Uuid();
 
   AppSettings _settings = AppSettings();
@@ -40,7 +42,7 @@ class AppState extends ChangeNotifier {
   // Dashboard Period View: 'monthly' or 'weekly'
   String _dashboardPeriodView = 'monthly';
 
-  AppState(this._storage);
+  AppState(this._storage, [this._notificationService]);
 
   // Getters
   AppSettings get settings => _settings;
@@ -582,6 +584,12 @@ class AppState extends ChangeNotifier {
     );
     _reminders.add(item);
     await _storage.saveReminders(_reminders);
+    
+    // Schedule notification
+    if (_notificationService != null && _notificationService!.isPermissionGranted) {
+      await _notificationService!.scheduleReminder(item);
+    }
+    
     notifyListeners();
   }
 
@@ -590,11 +598,22 @@ class AppState extends ChangeNotifier {
     if (index != -1) {
       _reminders[index] = updated;
       await _storage.saveReminders(_reminders);
+      
+      // Reschedule notification
+      if (_notificationService != null && _notificationService!.isPermissionGranted) {
+        await _notificationService!.scheduleReminder(updated);
+      }
+      
       notifyListeners();
     }
   }
 
   Future<void> deleteReminder(String id) async {
+    // Cancel notification before deleting
+    if (_notificationService != null) {
+      await _notificationService!.cancelNotification(id.hashCode.abs() % 10000);
+    }
+    
     _reminders.removeWhere((r) => r.id == id);
     await _storage.saveReminders(_reminders);
     notifyListeners();
@@ -646,30 +665,51 @@ class AppState extends ChangeNotifier {
       linkedExpenseId: linkedTxId,
     );
 
+    // Cancel notification for paid reminder
+    if (_notificationService != null) {
+      await _notificationService!.cancelNotification(reminder.id.hashCode.abs() % 10000);
+    }
+
     // If recurring, auto-schedule next occurrence
     if (reminder.recurrence != ReminderRecurrence.oneTime) {
       DateTime nextDue = reminder.dueDate;
       if (reminder.recurrence == ReminderRecurrence.monthly) {
+        // Handle month-end correctly (e.g., Jan 31 -> Feb 28/29)
+        final nextMonth = DateTime(reminder.dueDate.year, reminder.dueDate.month + 1, 1);
+        final lastDayOfNextMonth = DateTime(nextMonth.year, nextMonth.month + 1, 0).day;
+        final day = reminder.dueDate.day > lastDayOfNextMonth ? lastDayOfNextMonth : reminder.dueDate.day;
         nextDue = DateTime(
-          reminder.dueDate.year,
-          reminder.dueDate.month + 1,
-          reminder.dueDate.day,
+          nextMonth.year,
+          nextMonth.month,
+          day,
         );
       } else if (reminder.recurrence == ReminderRecurrence.quarterly) {
+        // Handle month-end for quarterly
+        final nextQuarter = DateTime(reminder.dueDate.year, reminder.dueDate.month + 3, 1);
+        final lastDayOfNextQuarter = DateTime(nextQuarter.year, nextQuarter.month + 1, 0).day;
+        final day = reminder.dueDate.day > lastDayOfNextQuarter ? lastDayOfNextQuarter : reminder.dueDate.day;
         nextDue = DateTime(
-          reminder.dueDate.year,
-          reminder.dueDate.month + 3,
-          reminder.dueDate.day,
+          nextQuarter.year,
+          nextQuarter.month,
+          day,
         );
       } else if (reminder.recurrence == ReminderRecurrence.yearly) {
-        nextDue = DateTime(
-          reminder.dueDate.year + 1,
-          reminder.dueDate.month,
-          reminder.dueDate.day,
-        );
+        // Handle leap years for yearly
+        final nextYear = reminder.dueDate.year + 1;
+        final isLeapYear = (nextYear % 4 == 0 && nextYear % 100 != 0) || (nextYear % 400 == 0);
+        final maxDayFeb = isLeapYear ? 29 : 28;
+        if (reminder.dueDate.month == 2 && reminder.dueDate.day == 29 && !isLeapYear) {
+          nextDue = DateTime(nextYear, 2, 28);
+        } else {
+          nextDue = DateTime(
+            nextYear,
+            reminder.dueDate.month,
+            reminder.dueDate.day,
+          );
+        }
       }
 
-      _reminders.add(ReminderItem(
+      final nextReminder = ReminderItem(
         id: _uuid.v4(),
         title: reminder.title,
         amount: reminder.amount,
@@ -678,7 +718,14 @@ class AppState extends ChangeNotifier {
         categoryId: reminder.categoryId,
         notes: reminder.notes,
         status: ReminderStatus.pending,
-      ));
+      );
+      
+      _reminders.add(nextReminder);
+      
+      // Schedule notification for next occurrence
+      if (_notificationService != null && _notificationService!.isPermissionGranted) {
+        await _notificationService!.scheduleReminder(nextReminder);
+      }
     }
 
     await _storage.saveReminders(_reminders);
@@ -694,6 +741,12 @@ class AppState extends ChangeNotifier {
         status: ReminderStatus.postponed,
       );
       await _storage.saveReminders(_reminders);
+      
+      // Reschedule notification
+      if (_notificationService != null && _notificationService!.isPermissionGranted) {
+        await _notificationService!.scheduleReminder(_reminders[index]);
+      }
+      
       notifyListeners();
     }
   }

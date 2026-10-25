@@ -175,6 +175,47 @@ class NotificationService {
     );
   }
 
+  Future<void> scheduleReminder(ReminderItem reminder) async {
+    if (!_permissionGranted) return;
+    
+    // Cancel any existing notification for this reminder
+    await cancelNotification(reminder.id.hashCode.abs() % 10000);
+    
+    // Only schedule if it's still pending or postponed
+    if (!reminder.isPending && !reminder.isPostponed) return;
+    
+    final now = DateTime.now();
+    final scheduledDate = reminder.dueDate;
+    
+    // Don't schedule if due date is in the past
+    if (scheduledDate.isBefore(now)) {
+      // If it's due today or recently overdue, show immediately
+      if (scheduledDate.difference(now).inDays >= -1) {
+        await showReminderAlert(reminder);
+      }
+      return;
+    }
+    
+    // For now, we'll show the notification immediately when the app runs
+    // This is a temporary solution - in production, use proper scheduling
+    // The checkAndFireReminders method will handle showing alerts when due
+    final daysText = _daysUntilText(reminder.dueDate);
+    await _show(
+      id: reminder.id.hashCode.abs() % 10000,
+      title: 'Bill Due: ${reminder.title}',
+      body: 'Rs.${reminder.amount.toStringAsFixed(0)} - $daysText. Tap to mark as paid.',
+      payload: 'reminder:${reminder.id}',
+      color: Colors.amber,
+    );
+  }
+
+  Future<void> scheduleReminders(List<ReminderItem> reminders) async {
+    if (!_permissionGranted) return;
+    
+    // Check and fire reminders that are due
+    await checkAndFireReminders(reminders);
+  }
+
   Future<void> checkAndFireReminders(List<ReminderItem> reminders) async {
     if (!_permissionGranted) return;
     final now = DateTime.now();

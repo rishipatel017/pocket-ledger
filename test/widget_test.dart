@@ -11,10 +11,15 @@ void main() {
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
     final storage = await StorageService.init();
+    
+    // Mark as seeded to prevent demo data in tests
+    await storage.markSeeded();
+    
     final appState = AppState(storage);
     await appState.init();
+    
+    // Don't initialize notification service in tests - it requires platform
     final notificationService = NotificationService();
-    await notificationService.initialize();
 
     await tester.pumpWidget(PocketLedgerApp(
       appState: appState,
